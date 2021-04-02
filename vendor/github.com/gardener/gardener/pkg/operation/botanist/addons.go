@@ -31,6 +31,7 @@ import (
 	kutil "github.com/gardener/gardener/pkg/utils/kubernetes"
 	"github.com/gardener/gardener/pkg/utils/secrets"
 	versionutils "github.com/gardener/gardener/pkg/utils/version"
+	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -377,6 +378,24 @@ func (b *Botanist) generateCoreAddonsChart() (*chartrenderer.RenderedChart, erro
 		extensions = append(extensions, extensionType)
 	}
 	shootInfo["extensions"] = strings.Join(extensions, ",")
+
+	cm, err := b.K8sSeedClient.Kubernetes().CoreV1().ConfigMaps("kube-system").Get("vpc-outbound-ips", metav1.GetOptions{})
+	if err != nil && !errors.IsNotFound(err) {
+		return nil, err
+	}
+
+	// Garden-setup cannot customize the configuration of gardenlet easily, so we refer to a contracted configmap instead
+	// If the seed cluster declares its outbound ips, we can safely add firewall for vpn-shoot
+	// TODO: add this to the configuration of gardenlet
+	if err == nil && len(cm.Data["ips"]) > 0 {
+		ipStr := cm.Data["ips"]
+		ipList := strings.Split(ipStr, " ")
+		var sourRanges []string
+		for _, ip := range ipList {
+			sourRanges = append(sourRanges, fmt.Sprintf("%s/32", ip))
+		}
+		vpnShootConfig["loadBalancerSourceRanges"] = sourRanges
+	}
 
 	coreDNS, err := b.InjectShootShootImages(coreDNSConfig, common.CoreDNSImageName)
 	if err != nil {

@@ -3074,6 +3074,11 @@ func (in *ShootSpec) DeepCopyInto(out *ShootSpec) {
 		*out = new(string)
 		**out = **in
 	}
+	if in.LoadBalancerSourceRanges != nil {
+		in, out := &in.LoadBalancerSourceRanges, &out.LoadBalancerSourceRanges
+		*out = make([]string, len(*in))
+		copy(*out, *in)
+	}
 	return
 }
 
@@ -3220,6 +3225,11 @@ func (in *ShootStatus) DeepCopyInto(out *ShootStatus) {
 		in, out := &in.Seed, &out.Seed
 		*out = new(string)
 		**out = **in
+	}
+	if in.InfrastructureProviderStatus != nil {
+		in, out := &in.InfrastructureProviderStatus, &out.InfrastructureProviderStatus
+		*out = new(runtime.RawExtension)
+		(*in).DeepCopyInto(*out)
 	}
 	return
 }

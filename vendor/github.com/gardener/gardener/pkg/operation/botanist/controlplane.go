@@ -27,6 +27,7 @@ import (
 	extensionsv1alpha1 "github.com/gardener/gardener/pkg/apis/extensions/v1alpha1"
 	"github.com/gardener/gardener/pkg/client/kubernetes"
 	"github.com/gardener/gardener/pkg/features"
+	"github.com/gardener/gardener/pkg/gardenlet/apis/config/helper"
 	gardenletfeatures "github.com/gardener/gardener/pkg/gardenlet/features"
 	"github.com/gardener/gardener/pkg/operation/common"
 	"github.com/gardener/gardener/pkg/utils"
@@ -579,31 +580,31 @@ func getResourcesForAPIServer(nodeCount int32, scalingClass string) (string, str
 
 	switch {
 	case scalingClass == "small":
-		cpuRequest = "800m"
+		cpuRequest = "400m"
 		memoryRequest = "800Mi"
 
 		cpuLimit = "1000m"
 		memoryLimit = "1200Mi"
 	case scalingClass == "medium":
-		cpuRequest = "1000m"
+		cpuRequest = "500m"
 		memoryRequest = "1100Mi"
 
 		cpuLimit = "1200m"
 		memoryLimit = "1900Mi"
 	case scalingClass == "large":
-		cpuRequest = "1200m"
+		cpuRequest = "600m"
 		memoryRequest = "1600Mi"
 
 		cpuLimit = "1500m"
 		memoryLimit = "3900Mi"
 	case scalingClass == "xlarge":
-		cpuRequest = "2500m"
+		cpuRequest = "1000m"
 		memoryRequest = "5200Mi"
 
 		cpuLimit = "3000m"
 		memoryLimit = "5900Mi"
 	case scalingClass == "2xlarge":
-		cpuRequest = "3000m"
+		cpuRequest = "1500m"
 		memoryRequest = "5200Mi"
 
 		cpuLimit = "4000m"
@@ -670,7 +671,17 @@ func (b *Botanist) DeployNetworkPolicies(ctx context.Context) error {
 // DeployKubeAPIServerService deploys kube-apiserver service.
 func (b *Botanist) DeployKubeAPIServerService(ctx context.Context) error {
 	const name = "kube-apiserver-service"
-	return b.ChartApplierSeed.Apply(ctx, filepath.Join(chartPathControlPlane, name), b.Shoot.SeedNamespace, name)
+	return b.ChartApplierSeed.Apply(ctx, filepath.Join(chartPathControlPlane, name), b.Shoot.SeedNamespace, name, kubernetes.MergeFuncs{
+		corev1.SchemeGroupVersion.WithKind("Service").GroupKind(): func(newObj, oldObj *unstructured.Unstructured) {
+			oldRanges, found, _ := unstructured.NestedSlice(oldObj.Object, "spec", "loadBalancerSourceRanges")
+			// call default merge
+			kubernetes.DefaultServiceMergeFunc(newObj, oldObj)
+			// loadBalancerSourceRanges is controlled by other components, do not touch it so set it back
+			if found {
+				_ = unstructured.SetNestedSlice(newObj.Object, oldRanges, "spec", "loadBalancerSourceRanges")
+			}
+		},
+	})
 }
 
 // DeployKubeAPIServer deploys kube-apiserver deployment.
@@ -1034,7 +1045,10 @@ func (b *Botanist) DeployKubeControllerManager(ctx context.Context) error {
 		return err
 	}
 
-	return b.ChartApplierSeed.Apply(ctx, filepath.Join(chartPathControlPlane, v1beta1constants.DeploymentNameKubeControllerManager), b.Shoot.SeedNamespace, v1beta1constants.DeploymentNameKubeControllerManager, kubernetes.Values(values))
+	overrideValues := b.OverrideHelmValues("kube-controller-manager")
+	mergedValues := utils.MergeMaps(values, overrideValues)
+
+	return b.ChartApplierSeed.Apply(ctx, filepath.Join(chartPathControlPlane, v1beta1constants.DeploymentNameKubeControllerManager), b.Shoot.SeedNamespace, v1beta1constants.DeploymentNameKubeControllerManager, kubernetes.Values(mergedValues))
 }
 
 // DeployKubeScheduler deploys kube-scheduler deployment.
@@ -1166,6 +1180,11 @@ func (b *Botanist) DeployETCD(ctx context.Context) error {
 				"cpu":    "50m",
 				"memory": "200M",
 			}
+			etcdValues["resources"] = map[string]interface{}{
+				"requests": map[string]interface{}{
+					"cpu": "100m",
+				},
+			}
 		}
 
 		// TODO(georgekuruvillak): Remove this, once HVPA support updating resources in CRD spec
@@ -1216,12 +1235,25 @@ func (b *Botanist) DeployETCD(ctx context.Context) error {
 		values["sidecar"] = sidecarValues
 		values["hvpa"] = hvpaValues
 
-		if err := b.ChartApplierSeed.Apply(ctx, filepath.Join(chartPathControlPlane, "etcd"), b.Shoot.SeedNamespace, name, kubernetes.Values(values)); err != nil {
+		overrideValues := b.OverrideHelmValues("etcd")
+		mergedValues := utils.MergeMaps(values, overrideValues)
+
+		if err := b.ChartApplierSeed.Apply(ctx, filepath.Join(chartPathControlPlane, "etcd"), b.Shoot.SeedNamespace, name, kubernetes.Values(mergedValues)); err != nil {
 			return err
 		}
 	}
 
 	return nil
+}
+
+func (b *Botanist) OverrideHelmValues(name string) map[string]interface{} {
+	log := b.Logger
+
+	overrideValues, err := helper.GetOverrideHelmValues(b.Config, name)
+	if err != nil {
+		log.Warnf("err get override helm values, err: %+v", err)
+	}
+	return overrideValues
 }
 
 // CheckVPNConnection checks whether the VPN connection between the control plane and the shoot networks

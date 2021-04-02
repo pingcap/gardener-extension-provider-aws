@@ -4072,6 +4072,7 @@ func autoConvert_v1alpha1_ShootSpec_To_core_ShootSpec(in *ShootSpec, out *core.S
 	out.Region = in.Region
 	out.SecretBindingName = in.SecretBindingName
 	out.SeedName = (*string)(unsafe.Pointer(in.SeedName))
+	out.LoadBalancerSourceRanges = *(*[]string)(unsafe.Pointer(&in.LoadBalancerSourceRanges))
 	return nil
 }
 
@@ -4101,6 +4102,7 @@ func autoConvert_core_ShootSpec_To_v1alpha1_ShootSpec(in *core.ShootSpec, out *S
 	out.Region = in.Region
 	out.SecretBindingName = in.SecretBindingName
 	out.SeedName = (*string)(unsafe.Pointer(in.SeedName))
+	out.LoadBalancerSourceRanges = *(*[]string)(unsafe.Pointer(&in.LoadBalancerSourceRanges))
 	return nil
 }
 
@@ -4194,6 +4196,7 @@ func autoConvert_v1alpha1_ShootStatus_To_core_ShootStatus(in *ShootStatus, out *
 	// WARNING: in.Seed requires manual conversion: does not exist in peer-type
 	out.TechnicalID = in.TechnicalID
 	out.UID = types.UID(in.UID)
+	out.InfrastructureProviderStatus = (*runtime.RawExtension)(unsafe.Pointer(in.InfrastructureProviderStatus))
 	return nil
 }
 
@@ -4211,6 +4214,7 @@ func autoConvert_core_ShootStatus_To_v1alpha1_ShootStatus(in *core.ShootStatus, 
 	// WARNING: in.SeedName requires manual conversion: does not exist in peer-type
 	out.TechnicalID = in.TechnicalID
 	out.UID = types.UID(in.UID)
+	out.InfrastructureProviderStatus = (*runtime.RawExtension)(unsafe.Pointer(in.InfrastructureProviderStatus))
 	return nil
 }
 

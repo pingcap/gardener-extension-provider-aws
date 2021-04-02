@@ -271,6 +271,10 @@ func (in *GardenletConfiguration) DeepCopyInto(out *GardenletConfiguration) {
 		*out = new(v1.LabelSelector)
 		(*in).DeepCopyInto(*out)
 	}
+	if in.OverrideHelmValues != nil {
+		in, out := &in.OverrideHelmValues, &out.OverrideHelmValues
+		*out = (*in).DeepCopy()
+	}
 	return
 }
 

@@ -68,7 +68,7 @@ start-validator:
 .PHONY: install
 install:
 	@LD_FLAGS="-w -X github.com/gardener/$(EXTENSION_PREFIX)-$(NAME)/pkg/version.Version=$(VERSION)" \
-	$(REPO_ROOT)/vendor/github.com/gardener/gardener/hack/install.sh ./...
+	$(REPO_ROOT)/hack/install.sh ./...
 
 .PHONY: docker-login
 docker-login:

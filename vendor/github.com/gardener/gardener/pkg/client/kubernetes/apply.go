@@ -118,84 +118,7 @@ func (c *Applier) deleteObject(ctx context.Context, desired *unstructured.Unstru
 
 // DefaultMergeFuncs contains options for common k8s objects, e.g. Service, ServiceAccount.
 var DefaultMergeFuncs = MergeFuncs{
-	corev1.SchemeGroupVersion.WithKind("Service").GroupKind(): func(newObj, oldObj *unstructured.Unstructured) {
-		newSvcType, found, _ := unstructured.NestedString(newObj.Object, "spec", "type")
-		if !found {
-			newSvcType = string(corev1.ServiceTypeClusterIP)
-			_ = unstructured.SetNestedField(newObj.Object, newSvcType, "spec", "type")
-		}
-
-		oldSvcType, found, _ := unstructured.NestedString(oldObj.Object, "spec", "type")
-		if !found {
-			oldSvcType = string(corev1.ServiceTypeClusterIP)
-
-		}
-
-		switch newSvcType {
-		case string(corev1.ServiceTypeLoadBalancer), string(corev1.ServiceTypeNodePort):
-			oldPorts, found, _ := unstructured.NestedSlice(oldObj.Object, "spec", "ports")
-			if !found {
-				// no old ports probably means that the service was of type External name before.
-				break
-			}
-
-			newPorts, found, _ := unstructured.NestedSlice(newObj.Object, "spec", "ports")
-			if !found {
-				// no new ports is safe to ignore
-				break
-			}
-
-			ports := []interface{}{}
-			for _, newPort := range newPorts {
-				np := newPort.(map[string]interface{})
-				npName, _, _ := unstructured.NestedString(np, "name")
-				npPort, _ := nestedFloat64OrInt64(np, "port")
-				nodePort, ok := nestedFloat64OrInt64(np, "nodePort")
-
-				for _, oldPortObj := range oldPorts {
-					op := oldPortObj.(map[string]interface{})
-					opName, _, _ := unstructured.NestedString(op, "name")
-					opPort, _ := nestedFloat64OrInt64(op, "port")
-
-					if (opName == npName || opPort == npPort) && (!ok || nodePort == 0) {
-						np["nodePort"] = op["nodePort"]
-					}
-				}
-
-				ports = append(ports, np)
-			}
-
-			_ = unstructured.SetNestedSlice(newObj.Object, ports, "spec", "ports")
-
-		case string(corev1.ServiceTypeExternalName):
-			// there is no ClusterIP in this case
-			return
-		}
-
-		// ClusterIP is immutable unless that old service is of type ExternalName
-		if oldSvcType != string(corev1.ServiceTypeExternalName) {
-			newClusterIP, _, _ := unstructured.NestedString(newObj.Object, "spec", "clusterIP")
-			if newClusterIP != string(corev1.ClusterIPNone) || newSvcType != string(corev1.ServiceTypeClusterIP) {
-				oldClusterIP, _, _ := unstructured.NestedString(oldObj.Object, "spec", "clusterIP")
-				_ = unstructured.SetNestedField(newObj.Object, oldClusterIP, "spec", "clusterIP")
-			}
-		}
-
-		newETP, _, _ := unstructured.NestedString(newObj.Object, "spec", "externalTrafficPolicy")
-		oldETP, _, _ := unstructured.NestedString(oldObj.Object, "spec", "externalTrafficPolicy")
-
-		if oldSvcType == string(corev1.ServiceTypeLoadBalancer) &&
-			newSvcType == string(corev1.ServiceTypeLoadBalancer) &&
-			newETP == string(corev1.ServiceExternalTrafficPolicyTypeLocal) &&
-			oldETP == string(corev1.ServiceExternalTrafficPolicyTypeLocal) {
-			newHealthCheckPort, _ := nestedFloat64OrInt64(newObj.Object, "spec", "healthCheckNodePort")
-			if newHealthCheckPort == 0 {
-				oldHealthCheckPort, _ := nestedFloat64OrInt64(oldObj.Object, "spec", "healthCheckNodePort")
-				_ = unstructured.SetNestedField(newObj.Object, oldHealthCheckPort, "spec", "healthCheckNodePort")
-			}
-		}
-
-	},
+	corev1.SchemeGroupVersion.WithKind("Service").GroupKind(): DefaultServiceMergeFunc,
 	corev1.SchemeGroupVersion.WithKind("ServiceAccount").GroupKind(): func(newObj, oldObj *unstructured.Unstructured) {
 		// We do not want to overwrite a ServiceAccount's `.secrets[]` list or `.imagePullSecrets[]`.
 		newObj.Object["secrets"] = oldObj.Object["secrets"]
@@ -205,6 +128,85 @@ var DefaultMergeFuncs = MergeFuncs{
 		// Never override the status of VPA resources
 		newObj.Object["status"] = oldObj.Object["status"]
 	},
+}
+
+func DefaultServiceMergeFunc(newObj, oldObj *unstructured.Unstructured) {
+	newSvcType, found, _ := unstructured.NestedString(newObj.Object, "spec", "type")
+	if !found {
+		newSvcType = string(corev1.ServiceTypeClusterIP)
+		_ = unstructured.SetNestedField(newObj.Object, newSvcType, "spec", "type")
+	}
+
+	oldSvcType, found, _ := unstructured.NestedString(oldObj.Object, "spec", "type")
+	if !found {
+		oldSvcType = string(corev1.ServiceTypeClusterIP)
+
+	}
+
+	switch newSvcType {
+	case string(corev1.ServiceTypeLoadBalancer), string(corev1.ServiceTypeNodePort):
+		oldPorts, found, _ := unstructured.NestedSlice(oldObj.Object, "spec", "ports")
+		if !found {
+			// no old ports probably means that the service was of type External name before.
+			break
+		}
+
+		newPorts, found, _ := unstructured.NestedSlice(newObj.Object, "spec", "ports")
+		if !found {
+			// no new ports is safe to ignore
+			break
+		}
+
+		ports := []interface{}{}
+		for _, newPort := range newPorts {
+			np := newPort.(map[string]interface{})
+			npName, _, _ := unstructured.NestedString(np, "name")
+			npPort, _ := nestedFloat64OrInt64(np, "port")
+			nodePort, ok := nestedFloat64OrInt64(np, "nodePort")
+
+			for _, oldPortObj := range oldPorts {
+				op := oldPortObj.(map[string]interface{})
+				opName, _, _ := unstructured.NestedString(op, "name")
+				opPort, _ := nestedFloat64OrInt64(op, "port")
+
+				if (opName == npName || opPort == npPort) && (!ok || nodePort == 0) {
+					np["nodePort"] = op["nodePort"]
+				}
+			}
+
+			ports = append(ports, np)
+		}
+
+		_ = unstructured.SetNestedSlice(newObj.Object, ports, "spec", "ports")
+
+	case string(corev1.ServiceTypeExternalName):
+		// there is no ClusterIP in this case
+		return
+	}
+
+	// ClusterIP is immutable unless that old service is of type ExternalName
+	if oldSvcType != string(corev1.ServiceTypeExternalName) {
+		newClusterIP, _, _ := unstructured.NestedString(newObj.Object, "spec", "clusterIP")
+		if newClusterIP != string(corev1.ClusterIPNone) || newSvcType != string(corev1.ServiceTypeClusterIP) {
+			oldClusterIP, _, _ := unstructured.NestedString(oldObj.Object, "spec", "clusterIP")
+			_ = unstructured.SetNestedField(newObj.Object, oldClusterIP, "spec", "clusterIP")
+		}
+	}
+
+	newETP, _, _ := unstructured.NestedString(newObj.Object, "spec", "externalTrafficPolicy")
+	oldETP, _, _ := unstructured.NestedString(oldObj.Object, "spec", "externalTrafficPolicy")
+
+	if oldSvcType == string(corev1.ServiceTypeLoadBalancer) &&
+		newSvcType == string(corev1.ServiceTypeLoadBalancer) &&
+		newETP == string(corev1.ServiceExternalTrafficPolicyTypeLocal) &&
+		oldETP == string(corev1.ServiceExternalTrafficPolicyTypeLocal) {
+		newHealthCheckPort, _ := nestedFloat64OrInt64(newObj.Object, "spec", "healthCheckNodePort")
+		if newHealthCheckPort == 0 {
+			oldHealthCheckPort, _ := nestedFloat64OrInt64(oldObj.Object, "spec", "healthCheckNodePort")
+			_ = unstructured.SetNestedField(newObj.Object, oldHealthCheckPort, "spec", "healthCheckNodePort")
+		}
+	}
+
 }
 
 func nestedFloat64OrInt64(obj map[string]interface{}, fields ...string) (int64, bool) {

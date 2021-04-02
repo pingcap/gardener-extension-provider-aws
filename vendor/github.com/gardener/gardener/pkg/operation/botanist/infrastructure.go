@@ -16,7 +16,10 @@ package botanist
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	gardencorev1beta1 "github.com/gardener/gardener/pkg/apis/core/v1beta1"
@@ -26,6 +29,7 @@ import (
 	"github.com/gardener/gardener/pkg/controllerutils"
 	"github.com/gardener/gardener/pkg/operation/common"
 	"github.com/gardener/gardener/pkg/utils/secrets"
+	errors2 "k8s.io/apimachinery/pkg/api/errors"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -130,6 +134,72 @@ func (b *Botanist) WaitUntilInfrastructureReady(ctx context.Context) error {
 			return nil
 		},
 	)
+}
+
+// DeployApiServerFirewall add the shoot worker nodes as a trust source of shoot apiserver
+func (b *Botanist) DeployApiServerFirewall(ctx context.Context) error {
+	var sourceRanges []string
+	if len(b.Shoot.Info.Spec.LoadBalancerSourceRanges) > 0 {
+		sourceRanges = append(sourceRanges, b.Shoot.Info.Spec.LoadBalancerSourceRanges...)
+
+		cm, err := b.K8sSeedClient.Kubernetes().CoreV1().ConfigMaps("kube-system").Get("vpc-outbound-ips", metav1.GetOptions{})
+		if err != nil && !errors2.IsNotFound(err) {
+			return err
+		}
+
+		// Add seed outbound ips, so that watchdog probing could success
+		if err == nil && len(cm.Data["ips"]) > 0 {
+			ipStr := cm.Data["ips"]
+			ipList := strings.Split(ipStr, " ")
+			for _, ip := range ipList {
+				sourceRanges = append(sourceRanges, fmt.Sprintf("%s/32", ip))
+			}
+		}
+	} else {
+		// use a safe default if the source ranges are not explicitly set
+		sourceRanges = append(sourceRanges, "0.0.0.0/0")
+	}
+
+	// By design, this action should create a custom resource to describe the intention and
+	// let the cloud provider extension to handle the implementation details.
+	// TODO: refactor this using CR
+	if b.Shoot.Info.Spec.Provider.Type == "aws" {
+		workerIps, err := b.getAwsWorkerPublicIPs(ctx)
+		if err != nil {
+			return err
+		}
+		for _, v := range workerIps {
+			sourceRanges = append(sourceRanges, fmt.Sprintf("%s/32", v))
+		}
+	}
+
+	svc, err := b.K8sSeedClient.Kubernetes().CoreV1().Services(b.Shoot.SeedNamespace).Get("kube-apiserver", metav1.GetOptions{})
+	if err != nil {
+		return err
+	}
+	svc.Spec.LoadBalancerSourceRanges = sourceRanges
+	return b.K8sSeedClient.Client().Update(ctx, svc)
+}
+
+func (b *Botanist) getAwsWorkerPublicIPs(ctx context.Context) ([]string, error) {
+	type WithNatIps struct {
+		VPC struct {
+			NatIPs []string `json:"natIps"`
+		} `json:"vpc"`
+	}
+	if b.Shoot.InfrastructureStatus == nil {
+		return nil, errors.New("cannot find infra status")
+	}
+	var s WithNatIps
+	err := json.Unmarshal(b.Shoot.InfrastructureStatus, &s)
+	if err != nil {
+		return nil, err
+	}
+	if s.VPC.NatIPs == nil {
+		b.Logger.Info("Cannot find nat ips, infra may be reconciled by legacy extension controller")
+		return nil, nil
+	}
+	return s.VPC.NatIPs, nil
 }
 
 // WaitUntilInfrastructureDeleted waits until the infrastructure resource has been deleted.

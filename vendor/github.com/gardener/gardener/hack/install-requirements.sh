@@ -20,7 +20,8 @@ echo "> Installing requirements"
 
 export GO111MODULE=on
 curl -sfL "https://install.goreleaser.com/github.com/golangci/golangci-lint.sh" | sh -s -- -b $(go env GOPATH)/bin v1.24.0
-curl -s "https://raw.githubusercontent.com/helm/helm/v2.13.1/scripts/get" | bash -s -- --version 'v2.13.1'
+# Install helm manually by `brew install helm@2` and `export PATH=/usr/local/opt/helm@2/bin:$PATH`
+#curl -s "https://raw.githubusercontent.com/helm/helm/v2.13.1/scripts/get" | bash -s -- --version 'v2.13.1'
 
 if [[ "$(uname -s)" == *"Darwin"* ]]; then
   cat <<EOM

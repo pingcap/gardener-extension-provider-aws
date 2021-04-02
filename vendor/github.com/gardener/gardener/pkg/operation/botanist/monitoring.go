@@ -150,8 +150,9 @@ func (b *Botanist) DeploySeedMonitoring(ctx context.Context) error {
 				"scrapeConfigs": scrapeConfigs.String(),
 			},
 		}
+		// Disable seed kube-state-metrics because we have a cluster level one
 		kubeStateMetricsSeedConfig = map[string]interface{}{
-			"replicas": b.Shoot.GetReplicas(1),
+			"replicas": b.Shoot.GetReplicas(0),
 		}
 		kubeStateMetricsShootConfig = map[string]interface{}{
 			"replicas": b.Shoot.GetReplicas(1),
@@ -372,7 +373,7 @@ func (b *Botanist) deployGrafanaCharts(ctx context.Context, role, dashboards, ba
 			"basicAuthSecret": basicAuth,
 			"hosts":           hosts,
 		},
-		"replicas": b.Shoot.GetReplicas(1),
+		"replicas": b.Shoot.GetReplicas(0),
 		"role":     role,
 		"extensions": map[string]interface{}{
 			"dashboards": dashboards,
