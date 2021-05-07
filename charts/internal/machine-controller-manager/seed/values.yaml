@@ -17,4 +17,5 @@ metricsPort: 10258
 vpa:
   enabled: true
   updatePolicy:
-    updateMode: "Auto"
+    # do not interrupt MCM, workaround https://jira.tidbcloud.com/browse/DM-1037
+    updateMode: "Initial"
