@@ -16,6 +16,10 @@ resource "aws_vpc_dhcp_options" "vpc_dhcp_options" {
   domain_name_servers = ["AmazonProvidedDNS"]
 
 {{ include "aws-infra.common-tags" .Values | indent 2 }}
+
+  tags = {
+     "tenant" = "{{ .Values.tenant }}"
+  }
 }
 
 resource "aws_vpc" "vpc" {
@@ -24,6 +28,10 @@ resource "aws_vpc" "vpc" {
   enable_dns_hostnames = true
 
 {{ include "aws-infra.common-tags" .Values | indent 2 }}
+
+  tags = {
+     "tenant" = "{{ .Values.tenant }}"
+  }
 }
 
 {{ range $ep := .Values.vpc.gatewayEndpoints }}
@@ -32,16 +40,28 @@ resource "aws_vpc_endpoint" "vpc_gwep_{{ $ep }}" {
   service_name = "com.amazonaws.{{ required "aws.region is required" $.Values.aws.region }}.{{ $ep }}"
 
 {{ include "aws-infra.tags-with-suffix" (set $.Values "suffix" (print "gw-" $ep)) | indent 2 }}
+
+  tags = {
+     "tenant" = "{{ .Values.tenant }}"
+  }
 }
 {{ end }}
 
 resource "aws_vpc_dhcp_options_association" "vpc_dhcp_options_association" {
   vpc_id          = "${aws_vpc.vpc.id}"
   dhcp_options_id = "${aws_vpc_dhcp_options.vpc_dhcp_options.id}"
+
+  tags = {
+     "tenant" = "{{ .Values.tenant }}"
+  }
 }
 
 resource "aws_default_security_group" "default" {
   vpc_id = "${aws_vpc.vpc.id}"
+
+  tags = {
+     "tenant" = "{{ .Values.tenant }}"
+  }
 }
 
 resource "aws_internet_gateway" "igw" {
@@ -55,12 +75,20 @@ resource "aws_route_table" "routetable_main" {
   vpc_id = "{{ required "vpc.id is required" .Values.vpc.id }}"
 
 {{ include "aws-infra.common-tags" .Values | indent 2 }}
+
+  tags = {
+     "tenant" = "{{ .Values.tenant }}"
+  }
 }
 
 resource "aws_route" "public" {
   route_table_id         = "${aws_route_table.routetable_main.id}"
   destination_cidr_block = "0.0.0.0/0"
   gateway_id             = "{{ required "vpc.internetGatewayID is required" .Values.vpc.internetGatewayID }}"
+
+  tags = {
+     "tenant" = "{{ .Values.tenant }}"
+  }
 }
 
 resource "aws_security_group" "nodes" {
@@ -69,6 +97,10 @@ resource "aws_security_group" "nodes" {
   vpc_id      = "{{ required "vpc.id is required" .Values.vpc.id }}"
 
 {{ include "aws-infra.tags-with-suffix" (set $.Values "suffix" "nodes") | indent 2 }}
+
+  tags = {
+     "tenant" = "{{ .Values.tenant }}"
+  }
 }
 
 resource "aws_security_group_rule" "nodes_self" {
@@ -78,6 +110,10 @@ resource "aws_security_group_rule" "nodes_self" {
   protocol          = "-1"
   self              = true
   security_group_id = "${aws_security_group.nodes.id}"
+
+  tags = {
+     "tenant" = "{{ .Values.tenant }}"
+  }
 }
 
 resource "aws_security_group_rule" "nodes_udp_all" {
@@ -87,6 +123,10 @@ resource "aws_security_group_rule" "nodes_udp_all" {
   protocol          = "udp"
   cidr_blocks       = ["0.0.0.0/0"]
   security_group_id = "${aws_security_group.nodes.id}"
+
+  tags = {
+     "tenant" = "{{ .Values.tenant }}"
+  }
 }
 
 resource "aws_security_group_rule" "nodes_egress_all" {
@@ -96,6 +136,10 @@ resource "aws_security_group_rule" "nodes_egress_all" {
   protocol          = "-1"
   cidr_blocks       = ["0.0.0.0/0"]
   security_group_id = "${aws_security_group.nodes.id}"
+
+  tags = {
+     "tenant" = "{{ .Values.tenant }}"
+  }
 }
 
 {{ range $index, $zone := .Values.zones }}
@@ -105,6 +149,10 @@ resource "aws_subnet" "nodes_z{{ $index }}" {
   availability_zone = "{{ required "zone.name is required" $zone.name }}"
 
 {{ include "aws-infra.tags-with-suffix" (set $.Values "suffix" (print "nodes-z" $index)) | indent 2 }}
+
+  tags = {
+     "tenant" = "{{ .Values.tenant }}"
+  }
 }
 
 output "{{ $.Values.outputKeys.subnetsNodesPrefix }}{{ $index }}" {
@@ -120,6 +168,7 @@ resource "aws_subnet" "private_utility_z{{ $index }}" {
     Name = "{{ required "clusterName is required" $.Values.clusterName }}-private-utility-z{{ $index }}"
     "kubernetes.io/cluster/{{ required "clusterName is required" $.Values.clusterName }}"  = "1"
     "kubernetes.io/role/internal-elb" = "use"
+    "tenant" = "{{ .Values.tenant }}"
   }
 }
 
@@ -130,6 +179,10 @@ resource "aws_security_group_rule" "nodes_tcp_internal_z{{ $index }}" {
   protocol          = "tcp"
   cidr_blocks       = ["{{ required "zone.internal is required" $zone.internal }}"]
   security_group_id = "${aws_security_group.nodes.id}"
+
+  tags = {
+     "tenant" = "{{ .Values.tenant }}"
+  }
 }
 
 resource "aws_security_group_rule" "nodes_udp_internal_z{{ $index }}" {
@@ -139,6 +192,10 @@ resource "aws_security_group_rule" "nodes_udp_internal_z{{ $index }}" {
   protocol          = "udp"
   cidr_blocks       = ["{{ required "zone.internal is required" $zone.internal }}"]
   security_group_id = "${aws_security_group.nodes.id}"
+
+  tags = {
+     "tenant" = "{{ .Values.tenant }}"
+  }
 }
 
 resource "aws_subnet" "public_utility_z{{ $index }}" {
@@ -150,6 +207,7 @@ resource "aws_subnet" "public_utility_z{{ $index }}" {
     Name = "{{ required "clusterName is required" $.Values.clusterName }}-public-utility-z{{ $index }}"
     "kubernetes.io/cluster/{{ required "clusterName is required" $.Values.clusterName }}"  = "1"
     "kubernetes.io/role/elb" = "use"
+    "tenant" = "{{ .Values.tenant }}"
   }
 }
 
@@ -164,6 +222,10 @@ resource "aws_security_group_rule" "nodes_tcp_public_z{{ $index }}" {
   protocol          = "tcp"
   cidr_blocks       = ["{{ required "zone.public is required" $zone.public }}"]
   security_group_id = "${aws_security_group.nodes.id}"
+
+  tags = {
+     "tenant" = "{{ .Values.tenant }}"
+  }
 }
 
 resource "aws_security_group_rule" "nodes_udp_public_z{{ $index }}" {
@@ -173,6 +235,10 @@ resource "aws_security_group_rule" "nodes_udp_public_z{{ $index }}" {
   protocol          = "udp"
   cidr_blocks       = ["{{ required "zone.public is required" $zone.public }}"]
   security_group_id = "${aws_security_group.nodes.id}"
+
+  tags = {
+     "tenant" = "{{ .Values.tenant }}"
+  }
 }
 
 resource "aws_eip" "eip_natgw_z{{ $index }}" {
@@ -181,6 +247,7 @@ resource "aws_eip" "eip_natgw_z{{ $index }}" {
   tags = {
     Name = "{{ required "clusterName is required" $.Values.clusterName }}-eip-natgw-z{{ $index }}"
     "kubernetes.io/cluster/{{ required "clusterName is required" $.Values.clusterName }}"  = "1"
+    "tenant" = "{{ .Values.tenant }}"
   }
 }
 
@@ -191,6 +258,7 @@ resource "aws_nat_gateway" "natgw_z{{ $index }}" {
   tags = {
     Name = "{{ required "clusterName is required" $.Values.clusterName }}-natgw-z{{ $index }}"
     "kubernetes.io/cluster/{{ required "clusterName is required" $.Values.clusterName }}"  = "1"
+    "tenant" = "{{ .Values.tenant }}"
   }
 }
 
@@ -202,6 +270,10 @@ resource "aws_route_table" "routetable_private_utility_z{{ $index }}" {
   vpc_id = "{{ required "vpc.id is required" $.Values.vpc.id }}"
 
 {{ include "aws-infra.tags-with-suffix" (set $.Values "suffix" (print "private-" $zone.name)) | indent 2 }}
+
+  tags = {
+     "tenant" = "{{ .Values.tenant }}"
+  }
 }
 
 resource "aws_route" "private_utility_z{{ $index }}_nat" {
@@ -212,21 +284,37 @@ resource "aws_route" "private_utility_z{{ $index }}_nat" {
   timeouts {
     create = "5m"
   }
+
+  tags = {
+     "tenant" = "{{ .Values.tenant }}"
+  }
 }
 
 resource "aws_route_table_association" "routetable_private_utility_z{{ $index }}_association_private_utility_z{{ $index }}" {
   subnet_id      = "${aws_subnet.private_utility_z{{ $index }}.id}"
   route_table_id = "${aws_route_table.routetable_private_utility_z{{ $index }}.id}"
+
+  tags = {
+     "tenant" = "{{ .Values.tenant }}"
+  }
 }
 
 resource "aws_route_table_association" "routetable_main_association_public_utility_z{{ $index }}" {
   subnet_id      = "${aws_subnet.public_utility_z{{ $index }}.id}"
   route_table_id = "${aws_route_table.routetable_main.id}"
+
+  tags = {
+     "tenant" = "{{ .Values.tenant }}"
+  }
 }
 
 resource "aws_route_table_association" "routetable_private_utility_z{{ $index }}_association_nodes_z{{ $index }}" {
   subnet_id      = "${aws_subnet.nodes_z{{ $index }}.id}"
   route_table_id = "${aws_route_table.routetable_private_utility_z{{ $index }}.id}"
+
+  tags = {
+     "tenant" = "{{ .Values.tenant }}"
+  }
 }
 {{end}}
 
@@ -350,6 +438,10 @@ EOF
 resource "aws_key_pair" "kubernetes" {
   key_name   = "{{ required "clusterName is required" .Values.clusterName }}-ssh-publickey"
   public_key = "{{ required "sshPublicKey is required" .Values.sshPublicKey }}"
+
+  tags = {
+     "tenant" = "{{ .Values.tenant }}"
+  }
 }
 
 //=====================================================================
