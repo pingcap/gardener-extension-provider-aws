@@ -1,6 +1,7 @@
 aws:
   region: eu-west-1
 
+tenant: 123456
 create:
   vpc: true
 

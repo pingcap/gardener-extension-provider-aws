@@ -188,6 +188,7 @@ func generateTerraformInfraConfig(ctx context.Context, infrastructure *extension
 		"aws": map[string]interface{}{
 			"region": infrastructure.Spec.Region,
 		},
+		"tenant": infrastructure.Labels["tenant"],
 		"create": map[string]interface{}{
 			"vpc": createVPC,
 		},
